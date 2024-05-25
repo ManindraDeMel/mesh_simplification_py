@@ -4,18 +4,20 @@ import heapq
 import copy
 from tqdm import tqdm
 from sklearn.preprocessing import normalize
+import math
 
 OPTIM_VALENCE = 6
 VALENCE_WEIGHT = 1
 
 class Mesh:
-    def __init__(self, path, build_code=False, build_mat=False, manifold=True):
+    def __init__(self, path, important_indices=[], build_code=False, build_mat=False, manifold=True):
         self.path = path
         self.vs, self.faces = self.fill_from_file(path)
         self.compute_face_normals()
         self.compute_face_center()
         self.device = 'cpu'
         self.simp = False
+        self.important_indices = important_indices
         
         if manifold:
             self.build_gemm() #self.edges, self.ve
@@ -36,9 +38,13 @@ class Mesh:
                 vs.append([float(v) for v in splitted_line[1:4]])
             elif splitted_line[0] == 'f':
                 face_vertex_ids = [int(c.split('/')[0]) for c in splitted_line[1:]]
-                assert len(face_vertex_ids) == 3
                 face_vertex_ids = [(ind - 1) if (ind >= 0) else (len(vs) + ind) for ind in face_vertex_ids]
-                faces.append(face_vertex_ids)
+                if len(face_vertex_ids) == 3:
+                    faces.append(face_vertex_ids)
+                else:
+                    # Triangulate the face if it has more than 3 vertices
+                    for i in range(1, len(face_vertex_ids) - 1):
+                        faces.append([face_vertex_ids[0], face_vertex_ids[i], face_vertex_ids[i + 1]])
         f.close()
         vs = np.asarray(vs)
         faces = np.asarray(faces, dtype=int)
@@ -172,6 +178,7 @@ class Mesh:
         """ 1. compute Q for each vertex """
         Q_s = [[] for _ in range(len(vs))]
         E_s = [[] for _ in range(len(vs))]
+
         for i, v in enumerate(vs):
             f_s = np.array(list(vf[i]))
             fc_s = fc[f_s]
@@ -179,12 +186,16 @@ class Mesh:
             d_s = - 1.0 * np.sum(fn_s * fc_s, axis=1, keepdims=True)
             abcd_s = np.concatenate([fn_s, d_s], axis=1)
             Q_s[i] = np.matmul(abcd_s.T, abcd_s)
+            
+          
             v4 = np.concatenate([v, np.array([1])])
             E_s[i] = np.matmul(v4, np.matmul(Q_s[i], v4.T))
+            
 
         """ 2. compute E for every possible pairs and create heapq """
         E_heap = []
         for i, e in enumerate(edges):
+
             v_0, v_1 = vs[e[0]], vs[e[1]]
             Q_0, Q_1 = Q_s[e[0]], Q_s[e[1]]
             Q_new = Q_0 + Q_1
@@ -210,9 +221,13 @@ class Mesh:
             
             
             E_new = np.matmul(v4_new, np.matmul(Q_new, v4_new.T)) * valence_penalty
-            heapq.heappush(E_heap, (E_new, (e[0], e[1])))
+            if (e[0] in self.important_indices) or (e[1] in self.important_indices):
+                E_new = 10000000
+            else:
+                heapq.heappush(E_heap, (E_new, (e[0], e[1])))
         
         """ 3. collapse minimum-error vertex """
+        print('done')
         simp_mesh = copy.deepcopy(self)
 
         vi_mask = np.ones([len(simp_mesh.vs)]).astype(np.bool_)
