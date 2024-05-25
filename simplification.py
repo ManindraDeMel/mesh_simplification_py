@@ -49,7 +49,10 @@ def main():
         simp_mesh = mesh.simplification(target_v=target_v, valence_aware=args.optim)
     
     os.makedirs("data/output/", exist_ok=True)
-    simp_mesh.save("data/output/{}_{}.obj".format(mesh_name, simp_mesh.vs.shape[0]))
+    if args.important_indices:
+        simp_mesh.save("data/output/{}_{}_with_skeletonization.obj".format(mesh_name, simp_mesh.vs.shape[0]))
+    else:
+        simp_mesh.save("data/output/{}_{}_qem.obj".format(mesh_name, simp_mesh.vs.shape[0]))
     print("[FIN] Simplification Completed!")
 
 if __name__ == "__main__":
