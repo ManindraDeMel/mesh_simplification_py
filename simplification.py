@@ -44,7 +44,7 @@ def main():
         exit()
     
     if args.isotropic:
-        simp_mesh = mesh.edge_based_simplification(target_v=target_v, important_indices=important_indices, valence_aware=args.optim)
+        simp_mesh = mesh.edge_based_simplification(target_v=target_v, valence_aware=args.optim)
     else:
         simp_mesh = mesh.simplification(target_v=target_v, valence_aware=args.optim)
     
